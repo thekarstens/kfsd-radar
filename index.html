@@ -31,11 +31,13 @@
 (async function () {
   const m = await (await fetch('./manifest.json', { cache: "no-store" })).json();
   const bounds = m.leaflet_bounds;
-  const center = m.radar_latlon;
-  const VERSION = "nws1"; // change this any time you upload new frames
-  const frames = (m.frames || []).map(f => f.png + "?v=" + VERSION);
+const center = m.radar_latlon;
 
-  const utcList = (m.frames || []).map(f => f.utc || null);
+const VERSION = "nws1"; // bump this if you update frames again
+const frames = (m.frames || []).map(f => f.png + "?v=" + VERSION);
+
+const utcList = (m.frames || []).map(f => f.utc || null);
+
 
   const map = L.map('map', { attributionControl:true }).setView(center, 8);
 
