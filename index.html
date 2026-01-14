@@ -4,78 +4,131 @@
   <meta charset="utf-8" />
   <title>KFSD Radar • Apr 14, 2018</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   <style>
     html, body, #map { height: 100%; margin: 0; }
-    /* Light gray background (no basemap tiles) */
+    /* Fallback background while tiles load */
     #map { background: #d9d9d9; }
 
     .stamp {
       position: absolute; z-index: 1000; left: 12px; bottom: 12px;
       font: 14px/1.2 Arial, sans-serif;
-      background: rgba(255,255,255,0.8);
-      padding: 8px 10px;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+      background: rgba(255,255,255,0.85);
+      padding: 10px 12px;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.18);
     }
-    .stamp b { display:block; margin-bottom: 2px; }
+    .stamp b { display:block; margin-bottom: 4px; }
+    .controls {
+      position: absolute; z-index: 1000; right: 12px; top: 12px;
+      font: 14px/1.2 Arial, sans-serif;
+      background: rgba(255,255,255,0.85);
+      padding: 10px 12px;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+      display: flex; gap: 8px; align-items: center;
+    }
+    .btn {
+      cursor: pointer;
+      border: 1px solid rgba(0,0,0,0.25);
+      background: white;
+      border-radius: 10px;
+      padding: 6px 10px;
+      user-select: none;
+    }
+    .btn:active { transform: translateY(1px); }
+    .small { opacity: 0.85; }
   </style>
 </head>
 <body>
 <div id="map"></div>
+
+<div class="controls">
+  <div class="btn" id="toggle">Pause</div>
+  <div class="small" id="frameInfo"></div>
+</div>
+
 <div class="stamp">
-  <b>KFSD Reflectivity</b>
-  <div id="time">Loading…</div>
+  <b>KFSD Reflectivity (NWS colors)</b>
+  <div>Apr 14, 2018 • 7–10 AM CDT (12–15 UTC)</div>
+  <div class="small" id="time">Loading…</div>
 </div>
 
 <script>
 (async function () {
   try {
-    // 1) Load manifest
+    // Load manifest
     const resp = await fetch('./manifest.json', { cache: "no-store" });
     if (!resp.ok) throw new Error("Could not fetch manifest.json: HTTP " + resp.status);
     const m = await resp.json();
 
-    // 2) Read keys EXACTLY as your manifest uses them
-    const bounds = m.leaflet_bounds;     // [[S,W],[N,E]]
-    const center = m.radar_latlon;       // [lat, lon]
-    const frames = (m.frames || []).map(f => f.png); // ["frames/xxx.png", ...]
+    // Expect these keys (matches your manifest)
+    const bounds = m.leaflet_bounds;         // [[S,W],[N,E]]
+    const center = m.radar_latlon;           // [lat, lon]
+    const frameObjs = m.frames || [];        // [{png:"frames/..", utc:"..."}, ...]
 
-    if (!bounds || !center || frames.length === 0) {
+    if (!bounds || !center || frameObjs.length === 0) {
       throw new Error("Manifest missing leaflet_bounds, radar_latlon, or frames[] is empty.");
     }
 
-    // 3) Build map
-    const map = L.map('map', { attributionControl: false }).setView(center, 8);
+    const frames = frameObjs.map(f => f.png);
+    const utcList = frameObjs.map(f => f.utc || null);
+
+    // Create map
+    const map = L.map('map', { attributionControl: true }).setView(center, 8);
+
+    // Add LIGHT GRAY “TV style” basemap (CARTO Positron)
+    // Licensing: requires attribution (kept on map)
+    L.tileLayer(
+      'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      {
+        subdomains: 'abcd',
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+      }
+    ).addTo(map);
+
     map.fitBounds(bounds);
 
-    // 4) Add first overlay
+    // Overlay
     let i = 0;
-    const overlay = L.imageOverlay(frames[i], bounds, { opacity: 0.8 }).addTo(map);
+    const overlay = L.imageOverlay(frames[i], bounds, { opacity: 0.80 }).addTo(map);
 
-    // 5) Timestamp (if your manifest has utc entries, we’ll show them; otherwise show filename)
+    // UI helpers
     const timeEl = document.getElementById("time");
-    const utcList = (m.frames || []).map(f => f.utc || null);
+    const infoEl = document.getElementById("frameInfo");
+    const toggleBtn = document.getElementById("toggle");
 
-    function updateStamp(idx) {
-      const u = utcList[idx];
-      if (u) timeEl.textContent = u.replace("T", " ").replace("+00:00", " UTC");
-      else timeEl.textContent = frames[idx].split("/").pop();
+    function formatUTC(u) {
+      return u ? u.replace("T", " ").replace("+00:00", " UTC") : "";
     }
-    updateStamp(i);
+    function updateUI(idx) {
+      timeEl.textContent = formatUTC(utcList[idx]) || frames[idx].split("/").pop();
+      infoEl.textContent = (idx + 1) + " / " + frames.length;
+    }
+    updateUI(i);
 
-    // 6) Animate
+    // Animation
+    let running = true;
     const msPerFrame = 450;
-    setInterval(() => {
+    const timer = setInterval(() => {
+      if (!running) return;
       i = (i + 1) % frames.length;
       overlay.setUrl(frames[i]);
-      updateStamp(i);
+      updateUI(i);
     }, msPerFrame);
+
+    toggleBtn.addEventListener("click", () => {
+      running = !running;
+      toggleBtn.textContent = running ? "Pause" : "Play";
+    });
 
   } catch (err) {
     console.error(err);
-    alert("Radar page error: " + err.message + "\\n\\nPress F12 → Console for details.");
+    alert("Radar page error: " + err.message + "\n\nPress F12 → Console for details.");
   }
 })();
 </script>
