@@ -5,29 +5,92 @@
   "start_utc": "2018-04-14T12:00:00+00:00",
   "end_utc": "2018-04-14T15:00:00+00:00",
   "step_minutes": 10,
-  "radar_latlon": [43.5878, -96.7296],
-  "leaflet_bounds": [
-    [42.25, -98.75],
-    [44.90, -94.70]
-  ],
   "frames": [
-    {"png":"frames/KFSD_120158.png"},
-    {"png":"frames/KFSD_121105.png"},
-    {"png":"frames/KFSD_122012.png"},
-    {"png":"frames/KFSD_122918.png"},
-    {"png":"frames/KFSD_123825.png"},
-    {"png":"frames/KFSD_125206.png"},
-    {"png":"frames/KFSD_130113.png"},
-    {"png":"frames/KFSD_131019.png"},
-    {"png":"frames/KFSD_131926.png"},
-    {"png":"frames/KFSD_132832.png"},
-    {"png":"frames/KFSD_134212.png"},
-    {"png":"frames/KFSD_135119.png"},
-    {"png":"frames/KFSD_140054.png"},
-    {"png":"frames/KFSD_141031.png"},
-    {"png":"frames/KFSD_142008.png"},
-    {"png":"frames/KFSD_142943.png"},
-    {"png":"frames/KFSD_143920.png"},
-    {"png":"frames/KFSD_144857.png"}
+    {
+      "utc": "2018-04-14T12:01:58+00:00",
+      "png": "frames/KFSD_120158.png"
+    },
+    {
+      "utc": "2018-04-14T12:11:05+00:00",
+      "png": "frames/KFSD_121105.png"
+    },
+    {
+      "utc": "2018-04-14T12:20:12+00:00",
+      "png": "frames/KFSD_122012.png"
+    },
+    {
+      "utc": "2018-04-14T12:29:18+00:00",
+      "png": "frames/KFSD_122918.png"
+    },
+    {
+      "utc": "2018-04-14T12:38:25+00:00",
+      "png": "frames/KFSD_123825.png"
+    },
+    {
+      "utc": "2018-04-14T12:52:06+00:00",
+      "png": "frames/KFSD_125206.png"
+    },
+    {
+      "utc": "2018-04-14T13:01:13+00:00",
+      "png": "frames/KFSD_130113.png"
+    },
+    {
+      "utc": "2018-04-14T13:10:19+00:00",
+      "png": "frames/KFSD_131019.png"
+    },
+    {
+      "utc": "2018-04-14T13:19:26+00:00",
+      "png": "frames/KFSD_131926.png"
+    },
+    {
+      "utc": "2018-04-14T13:28:32+00:00",
+      "png": "frames/KFSD_132832.png"
+    },
+    {
+      "utc": "2018-04-14T13:42:12+00:00",
+      "png": "frames/KFSD_134212.png"
+    },
+    {
+      "utc": "2018-04-14T13:51:19+00:00",
+      "png": "frames/KFSD_135119.png"
+    },
+    {
+      "utc": "2018-04-14T14:00:54+00:00",
+      "png": "frames/KFSD_140054.png"
+    },
+    {
+      "utc": "2018-04-14T14:10:31+00:00",
+      "png": "frames/KFSD_141031.png"
+    },
+    {
+      "utc": "2018-04-14T14:20:08+00:00",
+      "png": "frames/KFSD_142008.png"
+    },
+    {
+      "utc": "2018-04-14T14:29:43+00:00",
+      "png": "frames/KFSD_142943.png"
+    },
+    {
+      "utc": "2018-04-14T14:39:20+00:00",
+      "png": "frames/KFSD_143920.png"
+    },
+    {
+      "utc": "2018-04-14T14:48:57+00:00",
+      "png": "frames/KFSD_144857.png"
+    }
+  ],
+  "radar_latlon": [
+    43.58777618408203,
+    -96.72944641113281
+  ],
+  "leaflet_bounds": [
+    [
+      42.240309421595505,
+      -98.589768746744
+    ],
+    [
+      44.93524294656856,
+      -94.86912407552163
+    ]
   ]
 }
