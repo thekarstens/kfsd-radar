@@ -237,6 +237,8 @@
   // --- Sweep state
   let angle = 0; // radians, 0 = east
   let swept = 0; // total radians swept since reset
+  const DWELL_MS = 600; // pause briefly after a full scan
+  let pendingAdvance = false;
   let lastTs = performance.now();
   let paused = false;
   function resetSweep(clearReturns, resume = true) {
@@ -250,23 +252,10 @@
   }
   document.getElementById("resetSweep").addEventListener("click", () => resetSweep(true));
   document.getElementById("pause").addEventListener("click", () => {
-    // If we finished a full revolution, "Play" starts a fresh revolution
-    if (paused && swept >= Math.PI * 2) {
-      angle = 0;
-      swept = 0;
-      paused = false;
-      document.getElementById("pause").textContent = "Pause";
-      return;
-    }
     paused = !paused;
     document.getElementById("pause").textContent = paused ? "Play" : "Pause";
   });
-  // Advance frames (kept from your original, but slower by default)
-  const FRAME_MS = 900; // change as you like
-  setInterval(() => {
-    if (!frames.length) return;
-    loadFrame((frameIndex + 1) % frames.length).catch(err => console.warn(err));
-  }, FRAME_MS);
+  // Frame advancement is tied to completing one full revolution (see tick()).
 
   // Initial load
   if (frames.length) {
@@ -366,11 +355,22 @@
       const dTheta = angVel * dt;
       swept += dTheta;
       angle = angle + dTheta;
-      // Stop after exactly 1 full revolution for teaching
+      // When we complete one full revolution, optionally advance to the next archived frame.
       if (swept >= Math.PI * 2) {
         angle = Math.PI * 2; // end position (same direction as 0)
         paused = true;
         document.getElementById("pause").textContent = "Play";
+        // Prevent rapid restarts: wait a moment, then advance frame and start a fresh revolution.
+        if (!pendingAdvance && frames.length > 1) {
+          pendingAdvance = true;
+          setTimeout(() => {
+            loadFrame((frameIndex + 1) % frames.length).catch(err => console.warn(err)).finally(() => {
+              pendingAdvance = false;
+              // Start a fresh revolution on the new frame (do not auto-clear unless you want)
+              resetSweep(true, true);
+            });
+          }, DWELL_MS);
+        }
       }
       angle = angle % (Math.PI * 2);
     }
