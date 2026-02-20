@@ -131,12 +131,12 @@
 
   // --- Radar site marker (defaults to manifest radar_latlon, Sioux Falls area)
   let radarLatLng = L.latLng(center[0], center[1]);
-  const marker = L.circleMarker(radarLatLng, { radius: 6, color: '#00e5ff', fillColor: '#00e5ff', fillOpacity: 1 }).addTo(map);
+  const marker = L.circleMarker(radarLatLng, { radius: 6, color: '#ffd84d', fillColor: '#ffd84d', fillOpacity: 1 }).addTo(map);
   map.on('click', (e) => {
     radarLatLng = e.latlng;
     marker.setLatLng(radarLatLng);
     // reset sweep so kids see the painting start from the new radar site
-    resetSweep(true);
+    resetSweep(true, true);
   });
 
   // --- Canvases on a dedicated pane
@@ -220,7 +220,7 @@
     srcCtx.clearRect(0,0,srcCanvas.width, srcCanvas.height);
     srcCtx.drawImage(sourceImg, 0, 0);
 
-    resetSweep(true);
+    resetSweep(true, true);
   }
 
   // --- Convert Leaflet bounds to on-screen rectangle
@@ -236,20 +236,31 @@
 
   // --- Sweep state
   let angle = 0; // radians, 0 = east
+  let swept = 0; // total radians swept since reset
   let lastTs = performance.now();
   let paused = false;
-
-  function resetSweep(clearReturns) {
+  function resetSweep(clearReturns, resume = true) {
     angle = 0;
+    swept = 0;
+    if (resume) {
+      paused = false;
+      document.getElementById("pause").textContent = "Pause";
+    }
     if (clearReturns) rctx.clearRect(0,0,returnsCanvas.width, returnsCanvas.height);
   }
-
   document.getElementById("resetSweep").addEventListener("click", () => resetSweep(true));
   document.getElementById("pause").addEventListener("click", () => {
+    // If we finished a full revolution, "Play" starts a fresh revolution
+    if (paused && swept >= Math.PI * 2) {
+      angle = 0;
+      swept = 0;
+      paused = false;
+      document.getElementById("pause").textContent = "Pause";
+      return;
+    }
     paused = !paused;
     document.getElementById("pause").textContent = paused ? "Play" : "Pause";
   });
-
   // Advance frames (kept from your original, but slower by default)
   const FRAME_MS = 900; // change as you like
   setInterval(() => {
@@ -266,7 +277,7 @@
   map.on("move zoom", () => {
     // keep what has been painted so far, just let it move with the map
     // easiest approach: clear and restart the sweep on map changes
-    resetSweep(true);
+    resetSweep(true, true);
   });
 
   function paintBeam(rect, cx, cy, theta, beamPx) {
@@ -322,13 +333,13 @@
     sctx.moveTo(cx, cy);
     sctx.lineTo(ex, ey);
     sctx.lineWidth = Math.max(1, beamPx);
-    sctx.strokeStyle = "rgba(0, 229, 255, 0.85)";
+    sctx.strokeStyle = "rgba(255, 215, 0, 0.90)"; // yellow sweep
     sctx.stroke();
 
     // Small "hit" sparkle at leading edge (subtle)
     sctx.beginPath();
     sctx.arc(cx + Math.cos(theta)*220, cy + Math.sin(theta)*220, 10, 0, Math.PI*2);
-    sctx.fillStyle = "rgba(255,255,255,0.35)";
+    sctx.fillStyle = "rgba(255, 236, 148, 0.45)"; // warm yellow sparkle
     sctx.fill();
 
     // Range rings (simple)
@@ -352,9 +363,17 @@
       const rpm = Number(rpmEl.value);
       const speedFactor = teachEl.checked ? 0.35 : 1.0;
       const angVel = (rpm * 2 * Math.PI / 60) * speedFactor;
-      angle = (angle + angVel * dt) % (Math.PI * 2);
+      const dTheta = angVel * dt;
+      swept += dTheta;
+      angle = angle + dTheta;
+      // Stop after exactly 1 full revolution for teaching
+      if (swept >= Math.PI * 2) {
+        angle = Math.PI * 2; // end position (same direction as 0)
+        paused = true;
+        document.getElementById("pause").textContent = "Play";
+      }
+      angle = angle % (Math.PI * 2);
     }
-
     const rect = overlayRect();
     const p = map.latLngToContainerPoint(radarLatLng);
     const beamPx = Number(beamPxEl.value);
