@@ -2,42 +2,120 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>KFSD Radar • Apr 14, 2018</title>
+  <title>KFSD Radar Sweep Painter • Apr 14, 2018</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     html, body, #map { height: 100%; margin: 0; }
     #map { background: #d9d9d9; }
+
     .stamp {
       position: absolute; z-index: 1000; left: 12px; bottom: 12px;
       font: 14px/1.2 Arial, sans-serif;
-      background: rgba(255,255,255,0.85);
+      background: rgba(255,255,255,0.88);
       padding: 10px 12px;
       border-radius: 12px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+      max-width: 380px;
     }
     .stamp b { display:block; margin-bottom: 4px; }
+    .stamp small { opacity: 0.85; }
+
+    .panel {
+      position: absolute;
+      top: 12px; left: 12px;
+      z-index: 1200;
+      background: rgba(0,0,0,0.70);
+      color: #fff;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-size: 13px;
+      width: 280px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+    }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:8px 0; }
+    .row label { flex: 1; }
+    .row input[type="range"] { flex: 1.2; }
+    .row output { width: 54px; text-align:right; opacity:0.9; }
+    .btnrow { display:flex; gap:8px; margin-top: 10px; }
+    button {
+      flex: 1;
+      cursor: pointer;
+      border: 0;
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+    }
+    button:hover { background: rgba(255,255,255,0.18); }
+
+    /* Ensure canvases overlay the map and do not steal clicks */
+    canvas.radarCanvas {
+      position: absolute;
+      top: 0; left: 0;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
 <div id="map"></div>
+
+<div class="panel">
+  <div style="font-weight: 700; font-size: 14px;">Radar “paints” returns as it spins</div>
+
+  <div class="row">
+    <label for="rpm">Spin speed</label>
+    <input id="rpm" type="range" min="1" max="30" value="6" step="1">
+    <output id="rpmOut">6 rpm</output>
+  </div>
+
+  <div class="row">
+    <label for="beamPx">Beam thickness</label>
+    <input id="beamPx" type="range" min="1" max="18" value="4" step="1">
+    <output id="beamPxOut">4 px</output>
+  </div>
+
+  <div class="row">
+    <label for="persist">Persistence</label>
+    <input id="persist" type="range" min="0" max="100" value="88" step="1">
+    <output id="persistOut">88</output>
+  </div>
+
+  <div class="row">
+    <label for="teach">Teaching slow-mode</label>
+    <input id="teach" type="checkbox" checked>
+  </div>
+
+  <div class="btnrow">
+    <button id="resetSweep">Reset sweep</button>
+    <button id="pause">Pause</button>
+  </div>
+
+  <div style="margin-top:8px; font-size:12px; opacity:0.85; line-height:1.35;">
+    This “beam” is a thin line (not a wedge). It reveals the archived radar image only where the beam has scanned.
+  </div>
+</div>
+
 <div class="stamp">
   <b>KFSD Reflectivity (NWS colors)</b>
-  <div>Apr 14, 2018 • 7–10 AM CDT (12–15 UTC)</div>
+  <div>Apr 14, 2018 • archived frames</div>
   <div id="time" style="opacity:0.85"></div>
+  <small>Tip: click map to move the “radar site” if you want.</small>
 </div>
+
 <script>
 (async function () {
+  // Load your existing manifest.json (same as your original index)
   const m = await (await fetch('./manifest.json', { cache: "no-store" })).json();
-  const bounds = m.leaflet_bounds;
-const center = m.radar_latlon;
 
-const VERSION = "nws1"; // bump this if you update frames again
-const frames = (m.frames || []).map(f => f.png + "?v=" + VERSION);
+  const boundsArr = m.leaflet_bounds;     // expected: [[south, west],[north, east]]
+  const center = m.radar_latlon;         // [lat, lon]
+  const VERSION = "sweep1";              // bump to break cache if needed
 
-const utcList = (m.frames || []).map(f => f.utc || null);
-
+  const frames = (m.frames || []).map(f => (f.png || f) + "?v=" + VERSION);
+  const utcList = (m.frames || []).map(f => f.utc || null);
 
   const map = L.map('map', { attributionControl:true }).setView(center, 8);
 
@@ -48,21 +126,244 @@ const utcList = (m.frames || []).map(f => f.utc || null);
     attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
   }).addTo(map);
 
+  const bounds = L.latLngBounds(boundsArr);
   map.fitBounds(bounds);
 
-  let i = 0;
-  const overlay = L.imageOverlay(frames[i], bounds, {opacity: 0.80}).addTo(map);
+  // --- Radar site marker (defaults to manifest radar_latlon, Sioux Falls area)
+  let radarLatLng = L.latLng(center[0], center[1]);
+  const marker = L.circleMarker(radarLatLng, { radius: 6, color: '#00e5ff', fillColor: '#00e5ff', fillOpacity: 1 }).addTo(map);
+  map.on('click', (e) => {
+    radarLatLng = e.latlng;
+    marker.setLatLng(radarLatLng);
+    // reset sweep so kids see the painting start from the new radar site
+    resetSweep(true);
+  });
+
+  // --- Canvases on a dedicated pane
+  const paneName = "radarPaintPane";
+  map.createPane(paneName);
+  map.getPane(paneName).style.zIndex = 650;
+
+  function makeCanvas() {
+    const c = document.createElement('canvas');
+    c.className = "radarCanvas";
+    map.getPane(paneName).appendChild(c);
+    return c;
+  }
+  const returnsCanvas = makeCanvas();
+  const sweepCanvas = makeCanvas();
+  const rctx = returnsCanvas.getContext('2d');
+  const sctx = sweepCanvas.getContext('2d');
+
+  function sizeCanvases() {
+    const size = map.getSize();
+    [returnsCanvas, sweepCanvas].forEach(c => {
+      c.width = size.x;
+      c.height = size.y;
+      c.style.width = size.x + "px";
+      c.style.height = size.y + "px";
+    });
+  }
+  sizeCanvases();
+  map.on('resize', sizeCanvases);
+
+  // --- UI
+  const rpmEl = document.getElementById("rpm");
+  const beamPxEl = document.getElementById("beamPx");
+  const persistEl = document.getElementById("persist");
+  const teachEl = document.getElementById("teach");
+  const rpmOut = document.getElementById("rpmOut");
+  const beamPxOut = document.getElementById("beamPxOut");
+  const persistOut = document.getElementById("persistOut");
+
+  function syncUI() {
+    rpmOut.textContent = rpmEl.value + " rpm";
+    beamPxOut.textContent = beamPxEl.value + " px";
+    persistOut.textContent = persistEl.value;
+  }
+  ["input","change"].forEach(evt => {
+    rpmEl.addEventListener(evt, syncUI);
+    beamPxEl.addEventListener(evt, syncUI);
+    persistEl.addEventListener(evt, syncUI);
+    teachEl.addEventListener(evt, syncUI);
+  });
+  syncUI();
+
   const timeEl = document.getElementById("time");
   const fmt = (u) => u ? u.replace("T"," ").replace("+00:00"," UTC") : "";
 
-  function update() { timeEl.textContent = fmt(utcList[i]) || frames[i]; }
-  update();
+  // --- Frame loading
+  let frameIndex = 0;
+  let sourceImg = new Image();
+  sourceImg.decoding = "async";
+  sourceImg.loading = "eager";
+  sourceImg.crossOrigin = "anonymous"; // safe if you ever host from elsewhere
 
+  // offscreen canvas holds the current radar frame (for fast drawImage)
+  const srcCanvas = document.createElement("canvas");
+  const srcCtx = srcCanvas.getContext("2d");
+
+  async function loadFrame(i) {
+    frameIndex = i;
+    const url = frames[frameIndex];
+    timeEl.textContent = fmt(utcList[frameIndex]) || url;
+
+    await new Promise((resolve, reject) => {
+      sourceImg.onload = () => resolve();
+      sourceImg.onerror = (e) => reject(new Error("Failed to load frame: " + url));
+      sourceImg.src = url;
+    });
+
+    // draw into offscreen buffer
+    srcCanvas.width = sourceImg.naturalWidth || sourceImg.width;
+    srcCanvas.height = sourceImg.naturalHeight || sourceImg.height;
+    srcCtx.clearRect(0,0,srcCanvas.width, srcCanvas.height);
+    srcCtx.drawImage(sourceImg, 0, 0);
+
+    resetSweep(true);
+  }
+
+  // --- Convert Leaflet bounds to on-screen rectangle
+  function overlayRect() {
+    const nw = bounds.getNorthWest();
+    const se = bounds.getSouthEast();
+    const pNW = map.latLngToContainerPoint(nw);
+    const pSE = map.latLngToContainerPoint(se);
+    const x = pNW.x, y = pNW.y;
+    const w = (pSE.x - pNW.x), h = (pSE.y - pNW.y);
+    return { x, y, w, h };
+  }
+
+  // --- Sweep state
+  let angle = 0; // radians, 0 = east
+  let lastTs = performance.now();
+  let paused = false;
+
+  function resetSweep(clearReturns) {
+    angle = 0;
+    if (clearReturns) rctx.clearRect(0,0,returnsCanvas.width, returnsCanvas.height);
+  }
+
+  document.getElementById("resetSweep").addEventListener("click", () => resetSweep(true));
+  document.getElementById("pause").addEventListener("click", () => {
+    paused = !paused;
+    document.getElementById("pause").textContent = paused ? "Play" : "Pause";
+  });
+
+  // Advance frames (kept from your original, but slower by default)
+  const FRAME_MS = 900; // change as you like
   setInterval(() => {
-    i = (i + 1) % frames.length;
-    overlay.setUrl(frames[i]);
-    update();
-  }, 450);
+    if (!frames.length) return;
+    loadFrame((frameIndex + 1) % frames.length).catch(err => console.warn(err));
+  }, FRAME_MS);
+
+  // Initial load
+  if (frames.length) {
+    try { await loadFrame(0); } catch (e) { console.warn(e); }
+  }
+
+  // Redraw on move/zoom so alignment stays perfect
+  map.on("move zoom", () => {
+    // keep what has been painted so far, just let it move with the map
+    // easiest approach: clear and restart the sweep on map changes
+    resetSweep(true);
+  });
+
+  function paintBeam(rect, cx, cy, theta, beamPx) {
+    // Thin "beam" polygon (a long skinny rectangle)
+    const maxRange = Math.max(returnsCanvas.width, returnsCanvas.height) * 1.4;
+    const ex = cx + Math.cos(theta) * maxRange;
+    const ey = cy + Math.sin(theta) * maxRange;
+
+    const half = beamPx / 2;
+    const px = -Math.sin(theta) * half;
+    const py =  Math.cos(theta) * half;
+
+    const p1x = cx + px, p1y = cy + py;
+    const p2x = ex + px, p2y = ey + py;
+    const p3x = ex - px, p3y = ey - py;
+    const p4x = cx - px, p4y = cy - py;
+
+    // (1) gently fade old returns (persistence)
+    const persist = Number(persistEl.value); // 0..100
+    const fadeAlpha = (100 - persist) / 100; // 0..1
+    if (fadeAlpha > 0) {
+      rctx.save();
+      rctx.globalCompositeOperation = "source-over";
+      rctx.fillStyle = `rgba(255,255,255,${fadeAlpha * 0.06})`; // fade toward white to match your image bg
+      rctx.fillRect(0, 0, returnsCanvas.width, returnsCanvas.height);
+      rctx.restore();
+    }
+
+    // (2) clip to beam polygon and paint source image *only within* the beam
+    rctx.save();
+    rctx.beginPath();
+    rctx.moveTo(p1x, p1y);
+    rctx.lineTo(p2x, p2y);
+    rctx.lineTo(p3x, p3y);
+    rctx.lineTo(p4x, p4y);
+    rctx.closePath();
+    rctx.clip();
+
+    // Draw source image into the georeferenced rectangle
+    if (rect.w > 0 && rect.h > 0 && srcCanvas.width && srcCanvas.height) {
+      rctx.drawImage(srcCanvas, rect.x, rect.y, rect.w, rect.h);
+    }
+
+    rctx.restore();
+
+    // (3) draw beam line & rings on top (sweep canvas)
+    sctx.clearRect(0,0,sweepCanvas.width, sweepCanvas.height);
+
+    // Beam line (bright)
+    sctx.save();
+    sctx.globalCompositeOperation = "source-over";
+    sctx.beginPath();
+    sctx.moveTo(cx, cy);
+    sctx.lineTo(ex, ey);
+    sctx.lineWidth = Math.max(1, beamPx);
+    sctx.strokeStyle = "rgba(0, 229, 255, 0.85)";
+    sctx.stroke();
+
+    // Small "hit" sparkle at leading edge (subtle)
+    sctx.beginPath();
+    sctx.arc(cx + Math.cos(theta)*220, cy + Math.sin(theta)*220, 10, 0, Math.PI*2);
+    sctx.fillStyle = "rgba(255,255,255,0.35)";
+    sctx.fill();
+
+    // Range rings (simple)
+    sctx.strokeStyle = "rgba(0,0,0,0.10)";
+    sctx.lineWidth = 1;
+    for (let r=150; r<=600; r+=150) {
+      sctx.beginPath();
+      sctx.arc(cx, cy, r, 0, Math.PI*2);
+      sctx.stroke();
+    }
+
+    sctx.restore();
+  }
+
+  function tick() {
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - lastTs) / 1000);
+    lastTs = now;
+
+    if (!paused) {
+      const rpm = Number(rpmEl.value);
+      const speedFactor = teachEl.checked ? 0.35 : 1.0;
+      const angVel = (rpm * 2 * Math.PI / 60) * speedFactor;
+      angle = (angle + angVel * dt) % (Math.PI * 2);
+    }
+
+    const rect = overlayRect();
+    const p = map.latLngToContainerPoint(radarLatLng);
+    const beamPx = Number(beamPxEl.value);
+
+    paintBeam(rect, p.x, p.y, angle, beamPx);
+
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
 })();
 </script>
 </body>
